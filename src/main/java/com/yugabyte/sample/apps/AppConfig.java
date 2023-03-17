@@ -96,6 +96,9 @@ public class AppConfig {
   // Batch size for apps that support batching.
   public int batchSize = 1;
 
+  // Batch size for apps that support batching.
+  public int percentDeletes = 0;
+
   // Batch size to read for Cassandra batch timeseries app.
   public int cassandraReadBatchSize = 1;
 

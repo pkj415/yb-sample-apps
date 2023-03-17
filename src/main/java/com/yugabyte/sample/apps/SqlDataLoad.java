@@ -16,6 +16,9 @@ import java.sql.*;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.apache.log4j.Logger;
 
@@ -58,7 +61,9 @@ public class SqlDataLoad extends AppBase {
 
     // The prepared insert statement for inserting the data.
     private volatile Connection insConnection = null;
+    public volatile Connection delConnection = null;
     private PreparedStatement preparedInsert = null;
+    private PreparedStatement preparedDelete = null;
 
     // Lock for initializing prepared statement objects.
     private static final Object prepareInitLock = new Object();
@@ -230,6 +235,18 @@ public class SqlDataLoad extends AppBase {
         return preparedInsert;
     }
 
+    private PreparedStatement getPreparedDelete() throws Exception {
+        if (preparedDelete == null) {
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("DELETE FROM ").append(getTableName()).append(" WHERE k=?");
+            close(delConnection);
+            delConnection = getPostgresConnection();
+            preparedDelete = delConnection.prepareStatement(sb.toString());
+        }
+        return preparedDelete;
+    }
+
     private String getValue(Key key, int col_idx, long key_idx) {
 
         if (col_idx <= appConfig.numForeignKeys) {
@@ -262,8 +279,6 @@ public class SqlDataLoad extends AppBase {
             for (Key key : keys) {
                 getSimpleLoadGenerator().recordWriteSuccess(key);
             }
-            return keys.size();
-
         } catch (Exception e) {
             for (Key key : keys) {
                 getSimpleLoadGenerator().recordWriteFailure(key);
@@ -272,9 +287,40 @@ public class SqlDataLoad extends AppBase {
             close(preparedInsert);
             preparedInsert = null;
         }
+
+        try {
+            if (ThreadLocalRandom.current().nextInt(1, 100) <= appConfig.percentDeletes) {
+                PreparedStatement delete_statement = getPreparedDelete();
+                Statement stmt = delConnection.createStatement();
+                // stmt.execute("BEGIN;");
+                HashSet<Key> keys_to_delete = new HashSet<>();
+                for (int i = 0; i < appConfig.batchSize; i++) {
+                    keys_to_delete.add(setupParamsForDelete(delete_statement));
+                    delete_statement.addBatch();
+                }
+                delete_statement.executeBatch();
+                // stmt.execute("COMMIT;");
+                LOG.info("Deleted successfully: " + keys_to_delete);
+            }
+        } catch (Exception e) {
+            LOG.info("Failed delete with error: " + e.getMessage());
+            close(preparedDelete);
+            preparedDelete = null;
+        }
         return keys.size();
     }
 
+    private Key setupParamsForDelete(PreparedStatement statement) throws Exception {
+        Key key = getSimpleLoadGenerator().getKeyToDelete();
+        if (key == null) {
+            throw new IllegalStateException("Cannot delete null key");
+        }
+
+        // Prefix hashcode to ensure generated keys are random and not sequential.
+        statement.setString(1, key.asString());
+
+        return key;
+    }
 
     private Key setupParams(PreparedStatement statement) throws Exception {
         Key key = getSimpleLoadGenerator().getKeyToWrite();
@@ -315,6 +361,7 @@ public class SqlDataLoad extends AppBase {
                 "--num_threads_write " + appConfig.numWriterThreads,
                 "--load_balance " + appConfig.loadBalance,
                 "--topology_keys " + appConfig.topologyKeys,
-                "--debug_driver " + appConfig.enableDriverDebug);
+                "--debug_driver " + appConfig.enableDriverDebug,
+                "--percentDeletes " + appConfig.percentDeletes);
     }
 }

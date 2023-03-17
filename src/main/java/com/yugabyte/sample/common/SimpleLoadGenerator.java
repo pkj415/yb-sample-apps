@@ -185,6 +185,11 @@ public class SimpleLoadGenerator {
     return retKey;
   }
 
+  public Key getKeyToDelete() {
+    long maxKey = maxWrittenKey.get();
+    return generateKey(ThreadLocalRandom.current().nextLong(maxKey));
+  }
+
   public Key getKeyToRead() {
     long maxKey = maxWrittenKey.get();
     if (maxKey < 0) {

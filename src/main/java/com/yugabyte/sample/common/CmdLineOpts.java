@@ -218,6 +218,11 @@ public class CmdLineOpts {
       }
     }
 
+    if (commandLine.hasOption("percent_deletes")) {
+      AppBase.appConfig.percentDeletes =
+              Integer.parseInt(commandLine.getOptionValue("percent_deletes"));
+    }
+
     if (appName.equals(CassandraPersonalization.class.getSimpleName())) {
       if (commandLine.hasOption("num_stores")) {
         AppBase.appConfig.numStores = Integer.parseInt(commandLine.getOptionValue("num_stores"));
@@ -785,6 +790,8 @@ public class CmdLineOpts {
       "Use an SSL connection while connecting to YugaByte.");
     options.addOption("batch_size", true,
                       "Number of keys to write in a batch (for apps that support batching).");
+    options.addOption("percent_deletes", true,
+                      "Probability of deleting batch_size number of keys that were inserted in the past");
     options.addOption(
         "output_json_metrics", false,
         "If true, output JSON metrics in addition to human-readable metrics to stdout.");
